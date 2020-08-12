@@ -1,10 +1,32 @@
 #!/bin/bash
 set -eu  # Exit on error
 
-storage_dir=$1
+#storage_dir=$1
+#librispeech_dir=$storage_dir/LibriSpeech
+#wham_dir=$storage_dir/wham_noise
+#librimix_outdir=$storage_dir/
+
+storage_dir=/floyd/input/librimixx/corpus
 librispeech_dir=$storage_dir/LibriSpeech
 wham_dir=$storage_dir/wham_noise
-librimix_outdir=$storage_dir/
+
+sox_storage_dir=sox
+
+librimix_outdir=librimix/
+
+function install_sox() {
+    apt-get update && apt-get install -y libsox-dev
+    echo "Download sox"
+    # If downloading stalls for more than 20s, relaunch from previous state.
+    wget -c --tries=0 --read-timeout=20 https://sourceforge.net/projects/sox/files/sox/14.4.2/sox-14.4.2.tar.gz -P $sox_storage_dir
+    tar -xzf $sox_storage_dir/sox-14.4.2.tar.gz -C $sox_storage_dir
+    rm -rf $sox_storage_dir/sox-14.4.2.tar.gz
+    cd $sox_storage_dir/sox-14.4.2
+    ./configure
+    make -s
+    sudo make install
+}
+
 
 function LibriSpeech_dev_clean() {
 	if ! test -e $librispeech_dir/dev-clean; then
@@ -56,6 +78,7 @@ function wham() {
 	fi
 }
 
+install_sox &
 LibriSpeech_dev_clean &
 LibriSpeech_test_clean &
 LibriSpeech_clean100 &
@@ -64,16 +87,16 @@ wham &
 
 wait
 
+python /floyd/home/scripts/augment_train_noise.py --wham_dir $wham_dir
 
-python scripts/augment_train_noise.py --wham_dir $wham_dir
-for n_src in 2 3; do
+for n_src in 2; do
   metadata_dir=metadata/Libri$n_src"Mix"
-  python scripts/create_librimix_from_metadata.py --librispeech_dir $librispeech_dir \
+  python /floyd/home/scripts/create_librimix_from_metadata.py --librispeech_dir $librispeech_dir \
     --wham_dir $wham_dir \
-    --metadata_dir $metadata_dir \
+    --metadata_dir /floyd/home/$metadata_dir \
     --librimix_outdir $librimix_outdir \
     --n_src $n_src \
-    --freqs 8k 16k \
-    --modes min max \
-    --types mix_clean mix_both mix_single
+    --freqs 8k \
+    --modes min \
+    --types mix_clean mix_both
 done
